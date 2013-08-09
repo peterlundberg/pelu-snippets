@@ -1,4 +1,6 @@
 
+
+
 #!/usr/bin/env python
 import os
 import md5
@@ -11,7 +13,7 @@ from bs4 import BeautifulSoup
 IMAGE_DIR = os.path.expanduser('~/Pictures/ImageFeed/')
 
 def status(message):
-	print message.encode('utf8')
+    print message.encode('utf8')
 
 def safe_filename(raw_name):
     return "".join(c for c in raw_name if c.isalnum() or c in (' ', '.')).rstrip()
@@ -30,6 +32,31 @@ def fetch_image(feed_title, image_caption, image_url):
     URLopener().retrieve(image_url, image_filename)
     status(u"")
 
+def handleFeed(contents, depth):
+    for e in contents.entries:
+        link_suffix = e.link.rsplit('.',1)[1].upper()
+        if link_suffix in ('PNG', 'JPG', 'JPEG'):
+            fetch_image(feed_title = contents.title,
+                        image_caption=e.title,
+                        image_url=e.link)
+        elif e.link == feed_url:
+            print "skipping self link"
+        else:
+            parseFeed(e.link, depth+1)
+
+def handlePage(feed_url):
+    soup = BeautifulSoup(urlopen(feed_url))
+    feed_title = " ".join(soup.title.stripped_strings)
+    bigPictureBoths = soup.find_all('div', 'bpBoth')
+    if bigPictureBoths:
+        print "Handling Big Picture page '%s'" % feed_url
+        for bpBoth in bigPictureBoths:
+            fetch_image(feed_title = feed_title,
+                        image_caption = " ".join(bpBoth.find('', 'bpCaption').stripped_strings),
+                        image_url=bpBoth.find('img')['src'])
+    else:
+        print "Skipping '%s' as type not recognized" % feed_url
+
 def parseFeed(feed_url, depth=0):
     if depth > 1:
         print "Skipping '%s' as to deep" % feed_url
@@ -38,28 +65,12 @@ def parseFeed(feed_url, depth=0):
     contents = feedparser.parse(feed_url)
     if contents.entries:
         print "Handling feed '%s'" % feed_url
-        for e in contents.entries:
-            link_suffix = e.link.rsplit('.',1)[1].upper()
-            if link_suffix in ('PNG', 'JPG', 'JPEG'):
-                fetch_image(feed_title = contents.title, 
-                      image_caption=e.title, 
-                      image_url=e.link)
-            elif e.link == feed_url:
-            	print "skipping self link"
-            else:
-                parseFeed(e.link, depth+1)
+        handleFeed(contents, depth)
     else:
-        soup = BeautifulSoup(urlopen(feed_url))  
-        feed_title = " ".join(soup.title.stripped_strings)
-        bigPictureBoths = soup.find_all('div', 'bpBoth')
-        if bigPictureBoths:
-            print "Handling Big Picture page '%s'" % feed_url
-            for bpBoth in bigPictureBoths:
-                fetch_image(feed_title = feed_title, 
-                     image_caption = " ".join(bpBoth.find('', 'bpCaption').stripped_strings), 
-                     image_url=bpBoth.find('img')['src'])
-        else:
-            print "Skipping '%s' as type not recognized" % feed_url
+        try:
+            handlePage(feed_url)
+        except Exception as e:
+            print "Skipping '%s' due to error %s" % (feed_url, e)
  
 if __name__ == "__main__":
     for feed_url in (
